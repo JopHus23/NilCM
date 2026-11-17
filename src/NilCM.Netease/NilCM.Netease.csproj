@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NilCM.Core\NilCM.Core.csproj" />
+    <ProjectReference Include="..\NilCM.Infrastructure\NilCM.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

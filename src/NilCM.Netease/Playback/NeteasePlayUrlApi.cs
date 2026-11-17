@@ -6,11 +6,11 @@ using NilCM.Core.Playback;
 namespace NilCM.Netease.Playback;
 
 /// <summary>
-/// 播放地址解析（weapi /weapi/song/enhance/player/url，需有效用户 cookie）。
-/// 2026-11 实测：匿名访问已全面失效——裸请求/os=pc/X-Real-IP/外链重定向/匿名注册全部无法取得 URL。
-/// 因此本解析器在登录切片（扫码登录写入 MUSIC_U 到 ITokenStore）落地前返回 null；cookie 就位后自动激活，Core/App 零改动。
+/// 播放地址解析（weapi /weapi/song/enhance/player/url?csrf_token=...，需完整登录 cookie，含 __csrf）。
+/// cookie 由用户导入（网页端复制完整 Cookie 头）或扫码登录写入 ITokenStore。
+/// 免费歌可播；VIP 返回试听（IsTrial）或不可播（null）。DTO 不出程序集。
 /// </summary>
-public sealed class NeteasePlayUrlApi(HttpClient httpClient, ITokenStore tokenStore, IAuthApi authApi) : IPlayUrlResolver
+public sealed class NeteasePlayUrlApi(HttpClient httpClient, ITokenStore tokenStore) : IPlayUrlResolver
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -19,18 +19,28 @@ public sealed class NeteasePlayUrlApi(HttpClient httpClient, ITokenStore tokenSt
         var cookie = await tokenStore.GetCookieAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(cookie))
         {
-            cookie = await authApi.GetAnonymousCookieAsync(cancellationToken);
-            await tokenStore.SaveCookieAsync(cookie, cancellationToken);
+            return null; // 未登录：见类注释（登录切片落地后此分支自然消失）
         }
+
+        // 网页端 weapi 请求必须附带 csrf_token 查询参数（值来自 cookie 的 __csrf 字段），见实连探针记录
+        var csrf = TryExtractCsrf(cookie);
+        var path = $"/weapi/song/enhance/player/url?csrf_token={Uri.EscapeDataString(csrf ?? string.Empty)}";
 
         var response = await WeapiHttpClient.PostAsync(
             httpClient,
-            "/weapi/song/enhance/player/url",
-            new { ids = $"[{trackId}]", br = BitrateOf(quality), csrf_token = string.Empty },
+            path,
+            new { ids = $"[{trackId}]", br = BitrateOf(quality), csrf_token = csrf ?? string.Empty },
             cookie,
             cancellationToken);
 
         return MapResponse(response.Body, trackId);
+    }
+
+    /// <summary>从 cookie 串提取 __csrf 值（网页 weapi 请求的查询参数）。重复出现时取最后一个（服务器惯例）。</summary>
+    private static string? TryExtractCsrf(string cookie)
+    {
+        var matches = System.Text.RegularExpressions.Regex.Matches(cookie, @"(?:^|;\s*)__csrf=([^;]+)");
+        return matches.Count > 0 ? matches[^1].Groups[1].Value.Trim() : null;
     }
 
     /// <summary>契约解析：录制的 JSON fixture → PlayUrlResult（可离线测试）。</summary>

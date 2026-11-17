@@ -50,4 +50,25 @@ internal static class WeapiHttpClient
         var match = System.Text.RegularExpressions.Regex.Match(source, @"MUSIC_U=[A-Za-z0-9]+");
         return match.Success ? match.Value : null;
     }
+
+    /// <summary>普通 GET（非加密端点，如 /login/qr/check）。返回 body + Set-Cookie。</summary>
+    public static async Task<WeapiResponse> GetAsync(HttpClient httpClient, string path, string? cookie, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (!string.IsNullOrEmpty(cookie))
+        {
+            request.Headers.TryAddWithoutValidation("Cookie", cookie);
+        }
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        string? setCookie = null;
+        if (response.Headers.TryGetValues("Set-Cookie", out var values))
+        {
+            setCookie = string.Join(", ", values);
+        }
+
+        return new WeapiResponse(body, setCookie);
+    }
 }

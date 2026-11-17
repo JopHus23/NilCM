@@ -4,8 +4,14 @@ using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using NilCM.App.ViewModels;
 using NilCM.App.Views;
+using NilCM.Core.Auth;
 using NilCM.Core.Lyrics;
+using NilCM.Core.Playback;
+using NilCM.Infrastructure.TokenStore;
+using NilCM.Netease.Auth;
 using NilCM.Netease.Lyrics;
+using NilCM.Netease.Playback;
+using NilCM.Playback.Engine;
 
 namespace NilCM.App;
 
@@ -50,6 +56,15 @@ public partial class App : Application
             return http;
         });
         services.AddSingleton<ILyricsApi, NeteaseLyricsApi>();
+
+        // 认证 / 凭据：匿名 cookie（weapi）+ JSON 文件持久化
+        services.AddSingleton<IAuthApi, NeteaseAuthApi>();
+        services.AddSingleton<ITokenStore, JsonFileTokenStore>();
+
+        // 播放：地址解析（weapi）+ LibVLC 引擎 + 编排
+        services.AddSingleton<IPlayUrlResolver, NeteasePlayUrlApi>();
+        services.AddSingleton<IAudioPlayer, LibVlcAudioPlayer>();
+        services.AddSingleton<PlaybackService>();
 
         // Core 编排（纯逻辑）
         services.AddSingleton<LyricsService>();

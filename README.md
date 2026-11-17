@@ -22,6 +22,7 @@ dotnet test                           # 全部测试
 
 ## 更新日志
 
-- **未发布**（本地已提交，待并入下个版本 tag）— 纵切片 #1「歌词全链」：Core 新增 `LyricLine` / `LyricParser`（LRC 纯函数解析，含 offset/多时间戳/排序）/ `ILyricsApi` / `LyricsService`；`NilCM.Netease` 实现歌词接口（DTO 不出程序集，录制 fixture 契约测试）；`NilCM.App` 组合根 DI 接线 + 最小歌词查看界面（CommunityToolkit.Mvvm）；Core / Netease / App 三层测试全绿。
+- **未发布**（本地已提交，待并入下个版本 tag）— 纵切片 #2「播放全链」：Core 新增 `IAudioPlayer` / `IPlayUrlResolver` / `PlaybackService` / `PlaybackState` / `PlayUrlResult`（含试听标记）/ `IAuthApi` / `ITokenStore`；`NilCM.Netease` 实现 weapi 加密（双重 AES-CBC + RSA 无填充）与播放地址解析；`NilCM.Playback` 以 LibVLCSharp 3.10.2 实现 `IAudioPlayer`（引擎线程差异封闭在适配器内，UI 采用轮询规避跨线程）；`NilCM.Infrastructure` 落地 `JsonFileTokenStore`；App 增加播放/暂停/继续/停止/音量/进度控制。**实测发现：2026-11 起网易已封禁全部匿名播放地址路径（旧端点/外链/X-Real-IP/匿名注册均失效），播放功能待「扫码登录」切片写入真实账号 cookie 后自动激活**（架构接口已就位，激活时 Core/App 零改动）。
+- **未发布**（并入上条 tag）— 纵切片 #1「歌词全链」：Core 新增 `LyricLine` / `LyricParser`（LRC 纯函数解析，含 offset/多时间戳/排序）/ `ILyricsApi` / `LyricsService`；`NilCM.Netease` 实现歌词接口（DTO 不出程序集，录制 fixture 契约测试）；`NilCM.App` 组合根 DI 接线 + 最小歌词查看界面（CommunityToolkit.Mvvm）；Core / Netease / App 三层测试全绿。
 - **v0.1.0**（本地已就绪，待所有者授权推送）— 首个里程碑：架构文档 v0.4（质量属性预算 / DovaBox 本地点歌联动契约 §6.1）+ 可编译解决方案骨架（net10.0 · Avalonia 12.1.6 · 中央包管理 · 三个测试项目 · build/test 全绿）。
 

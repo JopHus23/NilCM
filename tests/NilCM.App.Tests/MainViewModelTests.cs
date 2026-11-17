@@ -48,7 +48,7 @@ public class MainViewModelTests
     private static MainViewModel CreateVm(string? lyricRaw = "[00:01.000]a\n[00:02.500]b")
         => new(
             new LyricsService(new FakeLyricsApi(lyricRaw)),
-            new PlaybackService(new FakePlayer(), new FakeResolver()));
+            new PlaybackService(new FakePlayer(), new FakeResolver(), new PlayQueue()));
 
     [Fact]
     public async Task LoadLyricCommand_PopulatesLinesAndStatus()

@@ -13,12 +13,15 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
     private readonly PlaybackService _playback = playback;
     private CancellationTokenSource? _pollCts;
     private bool _currentIsTrial;
+    private bool _lastStateWasPlaying;
+    private bool _stopRequested;
+    private bool _autoAdvanceRunning;
 
     [ObservableProperty]
     private string _trackIdText = "347230";
 
     [ObservableProperty]
-    private string _statusText = "输入歌曲 ID，可获取歌词或播放。";
+    private string _statusText = "输入歌曲 ID 点歌入队，或添加本地文件播放。";
 
     [ObservableProperty]
     private bool _isBusy;
@@ -35,9 +38,14 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
     [ObservableProperty]
     private int _volumePercent = 80;
 
-    partial void OnVolumePercentChanged(int value) => _playback.Volume = value / 100f;
+    [ObservableProperty]
+    private string _modeText = "顺序播放";
 
     public ObservableCollection<string> LyricLines { get; } = [];
+
+    public ObservableCollection<string> QueueDisplay { get; } = [];
+
+    partial void OnVolumePercentChanged(int value) => _playback.Volume = value / 100f;
 
     [RelayCommand]
     private async Task LoadLyricAsync(CancellationToken cancellationToken)
@@ -75,6 +83,7 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
         }
     }
 
+    /// <summary>点歌：入队到队尾并立即播放。</summary>
     [RelayCommand]
     private async Task PlayAsync(CancellationToken cancellationToken)
     {
@@ -88,15 +97,20 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
         try
         {
             StatusText = "解析播放地址…";
-            var result = await _playback.PlayAsync(trackId, AudioQuality.High, cancellationToken);
-            if (result is null)
+            _playback.EnqueueTrack(trackId, $"歌曲 {trackId}");
+            _playback.Queue.SetCurrent(_playback.Queue.Count - 1);
+            RefreshQueueDisplay();
+
+            var started = await _playback.PlayCurrentAsync(cancellationToken);
+            if (!started)
             {
-                StatusText = "无法播放：解析不到播放地址（可能无版权或需要 VIP）。";
+                StatusText = "无法播放：解析不到播放地址（可能无版权/需 VIP，或未导入登录 cookie）。";
                 NowPlayingText = "未在播放";
                 return;
             }
 
-            _currentIsTrial = result.IsTrial;
+            _stopRequested = false;
+            _currentIsTrial = _playback.LastResolved?.IsTrial ?? false;
             StatusText = _currentIsTrial ? "已开始播放（试听）。" : "已开始播放。";
             StartPolling();
         }
@@ -123,11 +137,76 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
     [RelayCommand]
     private void StopPlayback()
     {
+        _stopRequested = true;
         _playback.Stop();
         StopPolling();
         NowPlayingText = "已停止";
         PositionText = "00:00 / 00:00";
         ProgressPercent = 0;
+    }
+
+    [RelayCommand]
+    private async Task NextTrackAsync()
+    {
+        var ok = await _playback.PlayNextAsync(userSkip: true);
+        RefreshQueueDisplay();
+        StatusText = ok ? "已切至下一首。" : "已是队列末尾（顺序模式）。";
+        _stopRequested = false;
+        StartPolling();
+    }
+
+    [RelayCommand]
+    private async Task PreviousTrackAsync()
+    {
+        var ok = await _playback.PlayPreviousAsync();
+        RefreshQueueDisplay();
+        StatusText = ok ? "已切至上一首。" : "队列播放失败。";
+    }
+
+    [RelayCommand]
+    private void CycleMode()
+    {
+        _playback.Queue.Mode = _playback.Queue.Mode switch
+        {
+            QueueMode.Sequential => QueueMode.RepeatAll,
+            QueueMode.RepeatAll => QueueMode.RepeatOne,
+            _ => QueueMode.Sequential,
+        };
+        ModeText = _playback.Queue.Mode switch
+        {
+            QueueMode.Sequential => "顺序播放",
+            QueueMode.RepeatAll => "列表循环",
+            QueueMode.RepeatOne => "单曲循环",
+            _ => "?",
+        };
+    }
+
+    /// <summary>由 View 层文件选择器调用（VM 保持无 Avalonia 类型）。入队并按需开播。</summary>
+    public void AddLocalFiles(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            _playback.EnqueueLocalFile(path);
+        }
+
+        RefreshQueueDisplay();
+        if (_playback.State is PlaybackState.Idle or PlaybackState.Stopped)
+        {
+            _playback.Queue.SetCurrent(_playback.Queue.Count - 1);
+            _stopRequested = false;
+            RefreshQueueDisplay();
+            _ = PlayCurrentAndPollAsync();
+        }
+    }
+
+    private async Task PlayCurrentAndPollAsync()
+    {
+        var ok = await _playback.PlayCurrentAsync();
+        StatusText = ok ? "开始播放本地文件。" : "本地文件播放失败。";
+        if (ok)
+        {
+            StartPolling();
+        }
     }
 
     private void StartPolling()
@@ -164,7 +243,17 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
 
     private void RefreshPlaybackUi()
     {
-        NowPlayingText = _playback.State switch
+        var state = _playback.State;
+
+        // 播完自动切下一首（用户手动停止时不触发）
+        if (_lastStateWasPlaying && state == PlaybackState.Stopped && !_stopRequested && !_autoAdvanceRunning)
+        {
+            _ = AutoAdvanceAsync();
+        }
+
+        _lastStateWasPlaying = state is PlaybackState.Playing;
+
+        NowPlayingText = state switch
         {
             PlaybackState.Playing => _currentIsTrial ? "正在播放（试听）" : "正在播放",
             PlaybackState.Loading => "缓冲中…",
@@ -178,9 +267,41 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
         var duration = _playback.Duration;
         PositionText = $"{Fmt(position)} / {Fmt(duration)}";
         ProgressPercent = duration > TimeSpan.Zero ? position.TotalSeconds / duration.TotalSeconds * 100 : 0;
+        RefreshQueueDisplay();
+    }
+
+    private async Task AutoAdvanceAsync()
+    {
+        if (_autoAdvanceRunning)
+        {
+            return;
+        }
+
+        _autoAdvanceRunning = true;
+        try
+        {
+            var ok = await _playback.PlayNextAsync();
+            StatusText = ok ? "自动切至下一首。" : "队列已播完（顺序模式）。";
+            if (!ok)
+            {
+                NowPlayingText = "队列已播完";
+            }
+        }
+        finally
+        {
+            _autoAdvanceRunning = false;
+        }
+    }
+
+    private void RefreshQueueDisplay()
+    {
+        var queue = _playback.Queue;
+        QueueDisplay.Clear();
+        for (var i = 0; i < queue.Count; i++)
+        {
+            QueueDisplay.Add((i == queue.CurrentIndex ? "▶ " : "   ") + queue.Items[i].Title);
+        }
     }
 
     private static string Fmt(TimeSpan t) => $"{(int)t.TotalMinutes:00}:{t.Seconds:00}";
 }
-
-

@@ -61,9 +61,10 @@ public partial class App : Application
         services.AddSingleton<IAuthApi, NeteaseAuthApi>();
         services.AddSingleton<ITokenStore, JsonFileTokenStore>();
 
-        // 播放：地址解析（weapi）+ LibVLC 引擎 + 编排
+        // 播放：地址解析（weapi）+ LibVLC 引擎 + 队列 + 编排
         services.AddSingleton<IPlayUrlResolver, NeteasePlayUrlApi>();
         services.AddSingleton<IAudioPlayer, LibVlcAudioPlayer>();
+        services.AddSingleton<PlayQueue>();
         services.AddSingleton<PlaybackService>();
 
         // Core 编排（纯逻辑）

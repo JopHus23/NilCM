@@ -5,8 +5,9 @@ using NilCM.Core.Auth;
 namespace NilCM.Netease.Auth;
 
 /// <summary>
-/// 二维码登录适配：weapi /weapi/login/qr/key 取 unikey；轮询 /login/qr/check（历史上为非加密端点，实连探针验证中）。
-/// 803 成功时从 Set-Cookie 捕获 MUSIC_U。
+/// 二维码登录适配（eapi 通道，interface3 主机）：
+/// key = /eapi/login/qrcode/unikey；轮询 = /eapi/login/qrcode/client/login（800 过期 / 801 待扫 / 802 已扫 / 803 成功）。
+/// 803 成功时从 Set-Cookie 捕获 MUSIC_U。UI 集成（二维码渲染/轮询触发）留待 UI 阶段。
 /// </summary>
 public sealed class NeteaseAuthApi(HttpClient httpClient) : IAuthApi
 {
@@ -14,9 +15,16 @@ public sealed class NeteaseAuthApi(HttpClient httpClient) : IAuthApi
 
     public async Task<QrLoginSession> CreateQrLoginAsync(CancellationToken cancellationToken = default)
     {
-        var response = await WeapiHttpClient.PostAsync(httpClient, "/weapi/login/qr/key", new { }, cookie: null, cancellationToken);
+        var response = await EapiHttpClient.PostAsync(
+            httpClient,
+            "/api/login/qrcode/unikey",
+            "https://interface3.music.163.com/eapi/login/qrcode/unikey",
+            new { },
+            cookie: null,
+            cancellationToken);
+
         var dto = TryDeserialize<QrKeyDto>(response.Body);
-        var unikey = dto?.Data?.Unikey;
+        var unikey = dto?.Data?.Unikey ?? dto?.Unikey;
         if (string.IsNullOrWhiteSpace(unikey))
         {
             throw new InvalidOperationException($"二维码 key 获取失败：{Truncate(response.Body)}");
@@ -28,9 +36,11 @@ public sealed class NeteaseAuthApi(HttpClient httpClient) : IAuthApi
 
     public async Task<QrCheckResult> CheckQrLoginAsync(string unikey, CancellationToken cancellationToken = default)
     {
-        var response = await WeapiHttpClient.GetAsync(
+        var response = await EapiHttpClient.PostAsync(
             httpClient,
-            $"/login/qr/check?key={Uri.EscapeDataString(unikey)}",
+            "/api/login/qrcode/client/login",
+            "https://interface3.music.163.com/eapi/login/qrcode/client/login",
+            new { key = unikey },
             cookie: null,
             cancellationToken);
 
@@ -70,10 +80,13 @@ public sealed class NeteaseAuthApi(HttpClient httpClient) : IAuthApi
 
     private static string Truncate(string s) => s.Length <= 120 ? s : s[..120];
 
-    private sealed record QrKeyDto([property: JsonPropertyName("data")] QrKeyDataDto? Data);
+    private sealed record QrKeyDto(
+        [property: JsonPropertyName("data")] QrKeyDataDto? Data,
+        [property: JsonPropertyName("unikey")] string? Unikey);
 
     private sealed record QrKeyDataDto([property: JsonPropertyName("unikey")] string? Unikey);
 
     private sealed record QrCheckDto([property: JsonPropertyName("code")] int Code);
 }
+
 

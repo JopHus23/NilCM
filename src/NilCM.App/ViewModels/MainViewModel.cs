@@ -177,6 +177,7 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
             QueueMode.Sequential => "顺序播放",
             QueueMode.RepeatAll => "列表循环",
             QueueMode.RepeatOne => "单曲循环",
+            QueueMode.Random => "随机播放",
             _ => "?",
         };
     }

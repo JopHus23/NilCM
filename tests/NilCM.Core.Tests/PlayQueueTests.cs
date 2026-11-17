@@ -123,4 +123,101 @@ public class PlayQueueTests
         Assert.Null(queue.Current.TrackId);
         Assert.Equal("a.mp3", queue.Current.Title); // 文件名作为标题
     }
+
+    [Fact]
+    public void RandomMode_FullPass_VisitsEveryItemExactlyOnce()
+    {
+        var queue = new PlayQueue(new Random(1234)) { Mode = QueueMode.Random };
+        for (long i = 1; i <= 6; i++)
+        {
+            queue.Enqueue(Track((int)i));
+        }
+
+        var visited = new List<long>();
+        for (var i = 0; i < 6; i++)
+        {
+            var item = queue.Next();
+            Assert.NotNull(item);
+            visited.Add(item!.TrackId!.Value);
+        }
+
+        // 全表随机：一轮内不重复、不遗漏（对比官方客户端“最近 N 首”的截断式随机）
+        Assert.Equal(6, visited.Distinct().Count());
+        Assert.Equal(new HashSet<long> { 1, 2, 3, 4, 5, 6 }, visited.ToHashSet());
+    }
+
+    [Fact]
+    public void RandomMode_Previous_WalksBackSameShuffleOrder()
+    {
+        var queue = new PlayQueue(new Random(1234)) { Mode = QueueMode.Random };
+        for (long i = 1; i <= 6; i++)
+        {
+            queue.Enqueue(Track((int)i));
+        }
+
+        var first = queue.Next()!;   // 重建锚定：新序排头
+        var second = queue.Next()!;  // 洗牌序第二项
+        Assert.NotEqual(first.TrackId, second.TrackId);
+
+        // 上一首沿洗牌序回走：回到排头
+        var back = queue.Previous()!;
+        Assert.Equal(first.TrackId, back.TrackId);
+    }
+
+    [Fact]
+    public void RandomMode_ReshufflesAfterFullPass_AndStillCoversAll()
+    {
+        var queue = new PlayQueue(new Random(99)) { Mode = QueueMode.Random };
+        for (long i = 1; i <= 5; i++)
+        {
+            queue.Enqueue(Track((int)i));
+        }
+
+        var pass1 = new List<long>();
+        for (var i = 0; i < 5; i++)
+        {
+            pass1.Add(queue.Next()!.TrackId!.Value);
+        }
+
+        // 整轮播完自动重洗，新一轮仍覆盖全部曲目
+        var pass2 = new List<long>();
+        for (var i = 0; i < 5; i++)
+        {
+            pass2.Add(queue.Next()!.TrackId!.Value);
+        }
+
+        Assert.Equal(5, pass1.Distinct().Count());
+        Assert.Equal(5, pass2.Distinct().Count());
+        Assert.Equal(new HashSet<long> { 1, 2, 3, 4, 5 }, pass2.ToHashSet());
+    }
+
+    [Fact]
+    public void RandomMode_EnqueueDuringRandom_NewItemEntersRotation()
+    {
+        var queue = new PlayQueue(new Random(7)) { Mode = QueueMode.Random };
+        for (long i = 1; i <= 3; i++)
+        {
+            queue.Enqueue(Track((int)i));
+        }
+
+        var pass = new List<long>();
+        for (var i = 0; i < 3; i++)
+        {
+            pass.Add(queue.Next()!.TrackId!.Value);
+        }
+
+        queue.Enqueue(Track(4)); // 随机轮换中途入队
+
+        // 新曲目最终会进入轮换：最多扫描两轮内必能遇到
+        var seen = new HashSet<long>();
+        var found = false;
+        for (var i = 0; i < 16 && !found; i++)
+        {
+            var trackId = queue.Next()!.TrackId!.Value;
+            seen.Add(trackId);
+            found = trackId == 4;
+        }
+
+        Assert.True(found, $"扫描 16 次未遇到新入队的曲目 4：seen=[{string.Join(",", seen)}]");
+    }
 }

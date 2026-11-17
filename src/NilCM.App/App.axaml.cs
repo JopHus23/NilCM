@@ -5,10 +5,12 @@ using Microsoft.Extensions.DependencyInjection;
 using NilCM.App.ViewModels;
 using NilCM.App.Views;
 using NilCM.Core.Auth;
+using NilCM.Core.Catalog;
 using NilCM.Core.Lyrics;
 using NilCM.Core.Playback;
 using NilCM.Infrastructure.TokenStore;
 using NilCM.Netease.Auth;
+using NilCM.Netease.Catalog;
 using NilCM.Netease.Lyrics;
 using NilCM.Netease.Playback;
 using NilCM.Playback.Engine;
@@ -56,6 +58,11 @@ public partial class App : Application
             return http;
         });
         services.AddSingleton<ILyricsApi, NeteaseLyricsApi>();
+
+        // 目录/用户/评论：搜索、歌单、专辑、歌手、日推、评论查看（weapi + 登录 cookie）
+        services.AddSingleton<ICatalogApi, NeteaseCatalogApi>();
+        services.AddSingleton<IUserApi, NeteaseCatalogApi>();
+        services.AddSingleton<ICommentApi, NeteaseCatalogApi>();
 
         // 认证 / 凭据：匿名 cookie（weapi）+ JSON 文件持久化
         services.AddSingleton<IAuthApi, NeteaseAuthApi>();

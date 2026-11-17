@@ -43,16 +43,16 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         // 数据源：网易（易腐囚笼）。接口失效时只改 NilCM.Netease 内部，Core/App 零改动。
+        // UseCookies=false：cookie 由 ITokenStore 管理并手动注入请求头，避免容器干扰（实连探针验证的形态）。
         services.AddSingleton(_ =>
         {
-            var http = new HttpClient
+            var http = new HttpClient(new SocketsHttpHandler { UseCookies = false })
             {
                 BaseAddress = new Uri("https://music.163.com/"),
                 Timeout = TimeSpan.FromSeconds(15),
             };
             http.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-            http.DefaultRequestHeaders.Referrer = new Uri("https://music.163.com/");
+                "DGJModule.NeteaseMusicApi/1.0.9 .NET CLR v4.0.30319");
             return http;
         });
         services.AddSingleton<ILyricsApi, NeteaseLyricsApi>();

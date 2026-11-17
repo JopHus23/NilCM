@@ -15,7 +15,7 @@ public partial class MainViewModel(LyricsService lyrics, PlaybackService playbac
     private bool _currentIsTrial;
 
     [ObservableProperty]
-    private string _trackIdText = "186016";
+    private string _trackIdText = "347230";
 
     [ObservableProperty]
     private string _statusText = "输入歌曲 ID，可获取歌词或播放。";
